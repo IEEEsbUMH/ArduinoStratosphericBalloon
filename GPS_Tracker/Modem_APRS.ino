@@ -186,7 +186,7 @@ void processPacket() {
 
 void loop() {
 
-  delay(10000);
+  delay(60000);
 
   //locationUpdateExample();
   //Loop only wait until Master sends information
