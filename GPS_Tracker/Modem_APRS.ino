@@ -86,7 +86,7 @@ void setup() {
   APRS_init(ADC_REFERENCE, OPEN_SQUELCH);
 
   // You must at a minimum configure your callsign and SSID
-  APRS_setCallsign("UMHBAL", 1);
+  APRS_setCallsign("EA5URA", 11);
 
   // You don't need to set the destination identifier, but
   // if you want to, this is how you do it:
