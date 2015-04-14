@@ -44,7 +44,7 @@ void loop()
   //To understand this see documentation about Tinygps++ Library. http://arduiniana.org/libraries/tinygpsplus/
   while (ss.available() > 0){
     if (gps.encode(ss.read())){
-      if(millis()-t_anterior>=5000){
+      if(millis()-t_anterior>=60000){
         sendInfo();
         t_anterior=millis(); 
       }
