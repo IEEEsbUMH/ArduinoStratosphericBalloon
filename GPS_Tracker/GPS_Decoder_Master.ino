@@ -2,254 +2,108 @@
 #######################################################################################
                          IEEE SB UMH STRATOSPHERIC BALLOON.
 #######################################################################################
-Program that creates APRS packet for analogic TLC modem. Based in BasicUsage.ino example
-of the library LibAPRS.
+Program for decode NMEA packets send by a GPS receiver connected via Serial Port.
 This program is part of the code used in the proyect IEEE SB UMH Stratospheric Balloon.
-and the code should be uploaded in the arduino Slave #2.
+and the code should be uploaded in the arduino master.
 */
 
-#include <Wire.h>
-#include <LibAPRS.h> // Include LibAPRS
 
-
-// You must define what reference voltage the ADC
-// of your device is running at. If you bought a
-// MicroModem from unsigned.io, it will be running
-// at 3.3v if the "hw rev" is greater than 2.0.
-// This is the most common. If you build your own
-// modem, you should know this value yourself :)
-#define ADC_REFERENCE REF_3V3
-// OR
-//#define ADC_REFERENCE REF_5V
-
-// You can also define whether your modem will be
-// running with an open squelch radio:
-#define OPEN_SQUELCH false
-
-// You always need to include this function. It will
-// get called by the library every time a packet is
-// received, so you can process incoming packets.
-//
-// If you are only interested in receiving, you should
-// just leave this function empty.
-// 
-// IMPORTANT! This function is called from within an
-// interrupt. That means that you should only do things
-// here that are FAST. Don't print out info directly
-// from this function, instead set a flag and print it
-// from your main loop, like this:
+#include <TinyGPS++.h> //Library for parse NMEA GPS packets
+#include <SoftwareSerial.h> //Library which allow create a new Serial Port on arduino
+#include <Wire.h> //Library used in I2C protocol
 
 //Variables
-static const int RXPin = 11, TXPin = 12; //
-static const uint32_t GPSBaud = 9600;
-boolean gotPacket = false;
-//char cad[100]="";
-char *data[20];
-//char *pch;
-char dataRead=' ';
-int i;
-char *comment="e";
-char latitud[9]="0000.00N";
-char *longitud="000000.00W";
-char datag[8]="000/000";
-char alt[10]="/A=000000";
-float t_anterior=0;
-AX25Msg incomingPacket;
-uint8_t *packetData;
+static const int RXPin = 3, TXPin = 2; // TX and RX ports used by GPS
+static const uint32_t GPSBaud = 9600; // GPS baudrate
+float latitude; 
+float longitude; 
+String lati="0000.00";
+String longi="0000.00";
+char l[9]="0000.00N";
+char ln[10]="00000.00W";
+double t_anterior=0;
 
-void aprs_msg_callback(struct AX25Msg *msg) {
-  // If we already have a packet waiting to be
-  // processed, we must drop the new one.
-  if (!gotPacket) {
-    // Set flag to indicate we got a packet
-    gotPacket = true;
 
-    // The memory referenced as *msg is volatile
-    // and we need to copy all the data to a
-    // local variable for later processing.
-    memcpy(&incomingPacket, msg, sizeof(AX25Msg));
+// The TinyGPS++ object
+TinyGPSPlus gps;
 
-    // We need to allocate a new buffer for the
-    // data payload of the packet. First we check
-    // if there is enough free RAM.
-    if (freeMemory() > msg->len) {
-      packetData = (uint8_t*)malloc(msg->len);
-      memcpy(packetData, msg->info, msg->len);
-      incomingPacket.info = packetData;
-    } 
-    else {
-      // We did not have enough free RAM to receive
-      // this packet, so we drop it.
-      gotPacket = false;
+// The serial connection to the GPS device
+SoftwareSerial ss(RXPin, TXPin);
+
+void setup()
+{
+  Serial.begin(115200); 
+  ss.begin(GPSBaud);
+  Wire.begin();                // Join i2c bus as master device
+}
+void loop()
+{
+  //To understand this see documentation about Tinygps++ Library. http://arduiniana.org/libraries/tinygpsplus/
+  while (ss.available() > 0){
+    if (gps.encode(ss.read())){
+      if(millis()-t_anterior>=60000){
+        sendInfo();
+        t_anterior=millis(); 
+      }
     }
   }
+  if (millis() > 5000 && gps.charsProcessed() < 10)
+  {
+    Serial.println(F("No GPS detected: check wiring.")); // executed in case 
+    while(true);
+  }
 }
 
-void setup() {
-  // Set up serial port
-  Serial.begin(115200);
-  Wire.begin(2);
-  Wire.onReceive(receiveEvent);
-  // Initialise APRS library - This starts the modem
-  APRS_init(ADC_REFERENCE, OPEN_SQUELCH);
+//Function used to add leading zeros according to APRS NMEA format.
+String floatToString( float n, int l, int d, boolean z){
+ char c[l+1];
+ String s;
 
-  // You must at a minimum configure your callsign and SSID
-  APRS_setCallsign("EA5URA", 11);
+ dtostrf(n,l,d,c);
+ s=String(c);
 
-  // You don't need to set the destination identifier, but
-  // if you want to, this is how you do it:
-  // APRS_setDestination("APZMDM", 0);
+ if(z){
+ s.replace(" ","0");
+ }
 
-  // Path parameters are set to sensible values by
-  // default, but this is how you can configure them:
-  APRS_setPath1("WIDE1", 1);
-  APRS_setPath2("WIDE2", 2);
-
-  // You can define preamble and tail like this:
-  // APRS_setPreamble(350);
-  // APRS_setTail(50);
-
-  // You can use the normal or alternate symbol table:
-  // APRS_useAlternateSymbolTable(false);
-
-  // And set what symbol you want to use:
-  APRS_setSymbol('O');
-
-  // We can print out all the settings
-  //APRS_printSettings();
-  Serial.print(F("Free RAM:     ")); Serial.println(freeMemory());
+ return s;
 }
 
-void locationUpdateExample() {
-
-  // We can optionally set power/height/gain/directivity
-  // information. These functions accept ranges
-  // from 0 to 10, directivity 0 to 9.
-  // See this site for a calculator:
-  // http://www.aprsfl.net/phgr.php
-  // LibAPRS will only add PHG info if all four variables
-  // are defined!
-  //APRS_setPower(2);
-  //APRS_setHeight(4);
-  //APRS_setGain(7);
-  //APRS_setDirectivity(0);
-
-  // We'll define a comment string
-
-
-  // And send the update
-  APRS_setLat(latitud);
-  Serial.println(latitud);
-  APRS_setLon(longitud);
-  Serial.println(datag);
-  Serial.print(F("Free RAM:     ")); Serial.println(freeMemory());
-  //comment=datag;
-  
-  APRS_sendLoc(datag, strlen(datag));
-
-  t_anterior=millis();
-}
-
-void altUpdate(){
-  APRS_setLat(latitud);
-  APRS_setLon(longitud);
-APRS_sendLoc(alt, strlen(comment));
-Serial.println(alt);
-t_anterior=0;
-}
-
-void messageAlt() {
-  // We first need to set the message recipient
-  APRS_setMessageDestination("BEACON", 0);
-
-  // And define a string to send
-  char *message = "Hi there! This is a message.";
-  APRS_sendMsg(datag, strlen(datag));
-
-
-}
-
-// Here's a function to process incoming packets
-// Remember to call this function often, so you
-// won't miss any packets due to one already
-// waiting to be processed
-void processPacket() {
-  if (gotPacket) {
-    gotPacket = false;
-
-    Serial.print(F("Received APRS packet. SRC: "));
-    Serial.print(incomingPacket.src.call);
-    Serial.print(F("-"));
-    Serial.print(incomingPacket.src.ssid);
-    Serial.print(F(". DST: "));
-    Serial.print(incomingPacket.dst.call);
-    Serial.print(F("-"));
-    Serial.print(incomingPacket.dst.ssid);
-    Serial.print(F(". Data: "));
-
-    for (int i = 0; i < incomingPacket.len; i++) {
-      Serial.write(incomingPacket.info[i]);
+//Function used to send GPS information to Slave Device 2 in APRS format.
+void sendInfo(){
+  //Uncomment the folllowing two lines to check the correct operation
+  //char r;
+    //Serial.println("llamada send");
+    
+  if (gps.location.isValid()){
+    Serial.println("VALIDO");
+  latitude=(int) gps.location.lat()*100+(gps.location.lat() - (int)gps.location.lat())*60;
+      if(gps.location.lat()>0){
+      lati=floatToString(latitude,7,2,true);
+      lati+="N";
+      lati.toCharArray(l,9);
+      //Serial.println(l); //Uncomment this line to check
     }
-    Serial.println("");
-
-    // Remeber to free memory for our buffer!
-    free(packetData);
-
-    // You can print out the amount of free
-    // RAM to check you don't have any memory
-    // leaks
-    // Serial.print(F("Free RAM: ")); Serial.println(freeMemory());
-  }
-}
-
-boolean whichExample = true;
-void loop() {
-if(millis()-t_anterior>=2000 && t_anterior!=0){
-  altUpdate();
-}
-  delay(10);
-
-}
-
-void receiveEvent(int by){
-  i=0;
-  while(21<Wire.available()){
-    latitud[i] = Wire.read(); // receive a byte as character
-    i++;
-  }
-  i=0;
-  while(12<Wire.available()){
-    longitud[i] = Wire.read(); // receive a byte as character
-    i++;
-  }
-  i=0;
-  while(6<Wire.available()){
-  if (i==3){
-  datag[3]='/';
-  }
     else{
-  datag[i] = Wire.read();
-  }
-  i++;
-  }
-  
-  i=0;
-  while(Wire.available()){
-  if(i==0){
-  alt[0]='/';
-  }
-  else if(i==1){
-  alt[1]='A';
-  }
-  else if(i==2){
-  alt[2]='=';
-  }
-  else{
-  alt[i]=Wire.read();
-  }
-  i++;
-  }
-    locationUpdateExample();
-  //delay(500);
-  
-}
+      lati=floatToString(abs(latitude),7,2,true);
+      lati+="S";
+      lati.toCharArray(l,9);
+    }
+    longitude=(int)gps.location.lng()*100+(gps.location.lng() - (int)gps.location.lng())*60;
+      if(gps.location.lng()>0){
+      longi=floatToString(longitude,8,2,true);
+      longi+="E";
+      longi.toCharArray(ln,10);
+      //Serial.println(gps.location.lng(),6); //Uncomment this line to check
+    }
+    else{
+      longi=floatToString(longitude*-1,8,2,true);
+      longi+="W";
+      longi.toCharArray(ln,10);
+      //Serial.println(ln); //Uncomment this line to check
+    }
+ }
+  Wire.beginTransmission(2); //Starts transmission to Slave #2 device
+  Wire.write(l);        // sends 8 bytes latitude information
+  Wire.write(ln);              // sends 9 bytes longitude information
+  Wire.endTrans
