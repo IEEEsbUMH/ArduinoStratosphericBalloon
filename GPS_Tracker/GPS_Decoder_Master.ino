@@ -2,9 +2,12 @@
 #######################################################################################
                          IEEE SB UMH STRATOSPHERIC BALLOON.
 #######################################################################################
+
 Program for decode NMEA packets send by a GPS receiver connected via Serial Port.
+
 This program is part of the code used in the proyect IEEE SB UMH Stratospheric Balloon.
 and the code should be uploaded in the arduino master.
+
 */
 
 
@@ -13,6 +16,12 @@ and the code should be uploaded in the arduino master.
 #include <Wire.h> //Library used in I2C protocol
 
 //Variables
+#include "Arduino.h"
+void setup();
+void loop();
+String floatToString( float n, int l, int d, boolean z);
+void sendInfo();
+#line 19
 static const int RXPin = 3, TXPin = 2; // TX and RX ports used by GPS
 static const uint32_t GPSBaud = 9600; // GPS baudrate
 float latitude; 
@@ -21,8 +30,14 @@ String lati="0000.00";
 String longi="0000.00";
 char l[9]="0000.00N";
 char ln[10]="00000.00W";
+String sp="000";
+char spd[4]="000";
+String hd="000";
+char hdg[4]="000";
+String al="000000";
+char alt[7]="000000";
 double t_anterior=0;
-
+int i;
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -41,7 +56,7 @@ void loop()
   //To understand this see documentation about Tinygps++ Library. http://arduiniana.org/libraries/tinygpsplus/
   while (ss.available() > 0){
     if (gps.encode(ss.read())){
-      if(millis()-t_anterior>=60000){
+      if(millis()-t_anterior>=63000){
         sendInfo();
         t_anterior=millis(); 
       }
@@ -100,10 +115,46 @@ void sendInfo(){
       longi=floatToString(longitude*-1,8,2,true);
       longi+="W";
       longi.toCharArray(ln,10);
-      //Serial.println(ln); //Uncomment this line to check
+      //Serial.println(ln); //Uncomment this line to check<M
     }
  }
+ if (gps.course.isValid()){
+    hd=floatToString((int)gps.course.deg(),3,0,true);
+    hd.toCharArray(hdg,4);
+ }
+   if (gps.speed.isValid()){
+    sp=floatToString((int)gps.speed.knots(),3,0,true);
+    sp.toCharArray(spd,4);
+   }
+   if(gps.altitude.isValid()){
+        al=floatToString((int)gps.altitude.feet(),6,0,true);
+    al.toCharArray(alt,7);
+   }
+ /*Wire.requestFrom(3,4);
+ temp[0]='t';
+ i=1
+ while(Wire.available()){
+ temp[i]=Wire.read();
+ i++;
+ }*/ //Uncomment to send temperature
   Wire.beginTransmission(2); //Starts transmission to Slave #2 device
   Wire.write(l);        // sends 8 bytes latitude information
   Wire.write(ln);              // sends 9 bytes longitude information
-  Wire.endTrans
+  
+  Wire.write(hdg);    //sends 3 bytes heading information
+  
+
+
+  Wire.write(spd);  //sends 3 bytes horizontal speed information
+
+
+
+  Wire.write(alt);
+  
+  Serial.println(hdg);
+   Serial.println(spd);
+    Serial.println(alt),
+  
+ // Wire.write(temp)     //send temperature
+  Wire.endTransmission();  //close the connection with Slave #2 device
+}
