@@ -13,7 +13,11 @@ and the code should be uploaded in the arduino Slave #2.
 
 
 // You must define what reference voltage the ADC
-// of your device is running at.
+// of your device is running at. If you bought a
+// MicroModem from unsigned.io, it will be running
+// at 3.3v if the "hw rev" is greater than 2.0.
+// This is the most common. If you build your own
+// modem, you should know this value yourself :)
 #define ADC_REFERENCE REF_3V3
 // OR
 //#define ADC_REFERENCE REF_5V
@@ -36,15 +40,20 @@ and the code should be uploaded in the arduino Slave #2.
 // from your main loop, like this:
 
 //Variables
+static const int RXPin = 11, TXPin = 12; //
+static const uint32_t GPSBaud = 9600;
 boolean gotPacket = false;
-char cad[100]="";
+//char cad[100]="";
 char *data[20];
-char *pch;
+//char *pch;
 char dataRead=' ';
 int i;
-char *comment;
+char *comment="e";
 char latitud[9]="0000.00N";
-char longitud[10]="00000.00W";
+char *longitud="000000.00W";
+char datag[8]="000/000";
+char alt[10]="/A=000000";
+float t_anterior=0;
 AX25Msg incomingPacket;
 uint8_t *packetData;
 
@@ -79,9 +88,8 @@ void aprs_msg_callback(struct AX25Msg *msg) {
 void setup() {
   // Set up serial port
   Serial.begin(115200);
-  Wire.begin(2);     //Starts as Slave #2
-  Wire.onReceive(receiveEvent);   //Call function receiveEvent() when receive a packet from Master device
-  comment=" ";
+  Wire.begin(2);
+  Wire.onReceive(receiveEvent);
   // Initialise APRS library - This starts the modem
   APRS_init(ADC_REFERENCE, OPEN_SQUELCH);
 
@@ -109,7 +117,7 @@ void setup() {
 
   // We can print out all the settings
   //APRS_printSettings();
-  //Serial.print(F("Free RAM:     ")); Serial.println(freeMemory());
+  Serial.print(F("Free RAM:     ")); Serial.println(freeMemory());
 }
 
 void locationUpdateExample() {
@@ -133,19 +141,31 @@ void locationUpdateExample() {
   APRS_setLat(latitud);
   Serial.println(latitud);
   APRS_setLon(longitud);
-  Serial.println(longitud);
-  APRS_sendLoc(comment, strlen(comment));
+  Serial.println(datag);
+  Serial.print(F("Free RAM:     ")); Serial.println(freeMemory());
+  //comment=datag;
+  
+  APRS_sendLoc(datag, strlen(datag));
 
+  t_anterior=millis();
 }
 
-//Function to send standard message
-void messageExample() {
+void altUpdate(){
+  APRS_setLat(latitud);
+  APRS_setLon(longitud);
+APRS_sendLoc(comment, strlen(comment));
+Serial.println(alt);
+t_anterior=0;
+}
+
+void messageAlt() {
   // We first need to set the message recipient
-  APRS_setMessageDestination("AA3BBB", 0);
+  APRS_setMessageDestination("BEACON", 0);
 
   // And define a string to send
   char *message = "Hi there! This is a message.";
-  APRS_sendMsg(message, strlen(message));
+  APRS_sendMsg(datag, strlen(datag));
+
 
 }
 
@@ -153,8 +173,6 @@ void messageExample() {
 // Remember to call this function often, so you
 // won't miss any packets due to one already
 // waiting to be processed
-
-//Function to read incomming message
 void processPacket() {
   if (gotPacket) {
     gotPacket = false;
@@ -184,28 +202,54 @@ void processPacket() {
   }
 }
 
+boolean whichExample = true;
 void loop() {
-
-  delay(60000);
-
-  //locationUpdateExample();
-  //Loop only wait until Master sends information
-
+if(millis()-t_anterior>=2000 && t_anterior!=0){
+  altUpdate();
+}
   delay(10);
 
 }
 
-//Function to read incoming packet from Master device
 void receiveEvent(int by){
   i=0;
-  while(9<Wire.available()){
+  while(21<Wire.available()){
     latitud[i] = Wire.read(); // receive a byte as character
     i++;
   }
   i=0;
-  while(Wire.available()){
+  while(12<Wire.available()){
     longitud[i] = Wire.read(); // receive a byte as character
     i++;
   }
-  locationUpdateExample();
+  i=0;
+  while(6<Wire.available()){
+  if (i==3){
+  datag[3]='/';
+  }
+    else{
+  datag[i] = Wire.read();
+  }
+  i++;
+  }
+  
+  i=0;
+  while(Wire.available()){
+  if(i==0){
+  alt[0]='/';
+  }
+  else if(i==1){
+  alt[1]='A';
+  }
+  else if(i==2){
+  alt[2]='=';
+  }
+  else{
+  alt[i]=Wire.read();
+  }
+  i++;
+  }
+    locationUpdateExample();
+  //delay(500);
+  
 }
