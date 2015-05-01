@@ -153,7 +153,7 @@ void locationUpdateExample() {
 void altUpdate(){
   APRS_setLat(latitud);
   APRS_setLon(longitud);
-APRS_sendLoc(comment, strlen(comment));
+APRS_sendLoc(alt, strlen(alt));
 Serial.println(alt);
 t_anterior=0;
 }
