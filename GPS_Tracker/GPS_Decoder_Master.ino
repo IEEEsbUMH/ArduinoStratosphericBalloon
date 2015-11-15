@@ -5,7 +5,7 @@
 
 Program to decode NMEA packets send by a GPS receiver connected via Serial Port.
 
-This program is part of the code used in the proyect IEEE SB UMH Stratospheric Balloon.
+This program is part of the code used in the project IEEE SB UMH Stratospheric Balloon.
 and the code should be uploaded in the arduino master.
 
 */
